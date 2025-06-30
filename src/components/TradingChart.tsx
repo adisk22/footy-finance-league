@@ -1,5 +1,5 @@
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 const chartData = [
   { time: '09:00', value: 1247, volume: 234 },
@@ -30,26 +30,26 @@ const TradingChart = () => {
           <AreaChart data={chartData}>
             <defs>
               <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(var(--footy-green))" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="hsl(var(--footy-green))" stopOpacity={0}/>
+                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis 
               dataKey="time" 
               axisLine={false}
               tickLine={false}
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              className="text-muted-foreground text-xs"
             />
             <YAxis 
               axisLine={false}
               tickLine={false}
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              className="text-muted-foreground text-xs"
             />
             <Area
               type="monotone"
               dataKey="value"
-              stroke="hsl(var(--footy-green))"
+              stroke="#22c55e"
               strokeWidth={2}
               fill="url(#colorValue)"
             />
@@ -72,4 +72,3 @@ const TradingChart = () => {
 };
 
 export default TradingChart;
-
