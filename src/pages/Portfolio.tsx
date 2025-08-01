@@ -51,6 +51,22 @@ const Portfolio = () => {
         .single();
 
       if (error) throw error;
+      
+      // If user has no balance, set it to 1000 (starting amount)
+      if (data?.balance === null || data?.balance === 0) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ balance: 1000 })
+          .eq('id', user.id);
+        
+        if (updateError) {
+          console.error('Error updating user balance:', updateError);
+        } else {
+          setUserBalance(1000);
+          return;
+        }
+      }
+      
       setUserBalance(data?.balance || 0);
     } catch (error) {
       console.error('Error fetching user balance:', error);
@@ -61,6 +77,8 @@ const Portfolio = () => {
     if (!user) return;
 
     try {
+      console.log('Fetching portfolio for user:', user.id);
+      
       const { data, error } = await supabase
         .from('portfolio')
         .select(`
@@ -80,6 +98,8 @@ const Portfolio = () => {
         .eq('user_id', user.id)
         .gt('quantity', 0);
 
+      console.log('Portfolio fetch result:', { data, error });
+
       if (error) throw error;
       
       // Transform the data to match our interface
@@ -90,6 +110,7 @@ const Portfolio = () => {
         player: Array.isArray(item.players) ? item.players[0] : item.players
       })).filter(item => item.player); // Filter out items without player data
 
+      console.log('Transformed portfolio data:', transformedData);
       setPortfolio(transformedData);
     } catch (error) {
       console.error('Error fetching portfolio:', error);
@@ -135,7 +156,7 @@ const Portfolio = () => {
     if (!user) return;
 
     try {
-      // Insert sell transaction
+      // Insert sell transaction - the database trigger will handle portfolio and balance updates
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -146,34 +167,19 @@ const Portfolio = () => {
           type: 'sell'
         });
 
-      if (transactionError) throw transactionError;
-
-      // Update portfolio
-      const newQuantity = item.quantity - 1;
-      
-      if (newQuantity > 0) {
-        const { error: updateError } = await supabase
-          .from('portfolio')
-          .update({ quantity: newQuantity })
-          .eq('id', item.id);
-
-        if (updateError) throw updateError;
-      } else {
-        const { error: deleteError } = await supabase
-          .from('portfolio')
-          .delete()
-          .eq('id', item.id);
-
-        if (deleteError) throw deleteError;
+      if (transactionError) {
+        // Check if it's an insufficient shares error
+        if (transactionError.message?.includes('Insufficient shares')) {
+          toast({
+            title: "Sale Failed",
+            description: "You don't own any shares of this player",
+            variant: "destructive"
+          });
+        } else {
+          throw transactionError;
+        }
+        return;
       }
-
-      // Update user balance
-      const { error: balanceError } = await supabase
-        .from('users')
-        .update({ balance: userBalance + item.player.current_price })
-        .eq('id', user.id);
-
-      if (balanceError) throw balanceError;
 
       toast({
         title: "Sale Successful",

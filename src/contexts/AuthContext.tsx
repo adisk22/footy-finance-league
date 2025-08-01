@@ -44,6 +44,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             createUserProfile(session.user);
           }, 0);
         }
+        
+        // Ensure existing users have a balance
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+          setTimeout(() => {
+            ensureUserBalance(session.user);
+          }, 0);
+        }
       }
     );
 
@@ -52,6 +59,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Ensure existing users have a balance
+      if (session?.user) {
+        setTimeout(() => {
+          ensureUserBalance(session.user);
+        }, 0);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -76,6 +90,46 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     } catch (error) {
       console.error('Error creating user profile:', error);
+    }
+  };
+
+  const ensureUserBalance = async (user: User) => {
+    try {
+      console.log('Ensuring user balance for:', user.id);
+      
+      // Check if user exists and has a balance
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', user.id)
+        .single();
+      
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error fetching user:', fetchError);
+        return;
+      }
+      
+      // If user doesn't exist or has no balance, create/update them
+      if (!existingUser || existingUser.balance === null || existingUser.balance === 0) {
+        const { error: upsertError } = await supabase
+          .from('users')
+          .upsert({
+            id: user.id,
+            email: user.email!,
+            username: user.user_metadata?.username || user.email?.split('@')[0],
+            balance: 1000 // Starting balance: €1000
+          }, {
+            onConflict: 'id'
+          });
+        
+        if (upsertError) {
+          console.error('Error ensuring user balance:', upsertError);
+        } else {
+          console.log('User balance ensured: 1000');
+        }
+      }
+    } catch (error) {
+      console.error('Error ensuring user balance:', error);
     }
   };
 
