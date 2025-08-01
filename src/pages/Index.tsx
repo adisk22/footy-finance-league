@@ -1,4 +1,5 @@
-
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import Header from '@/components/Header';
 import StockTicker from '@/components/StockTicker';
 import DashboardStats from '@/components/DashboardStats';
@@ -7,75 +8,77 @@ import PlayerCard from '@/components/PlayerCard';
 import TopGainers from '@/components/TopGainers';
 import Portfolio from '@/components/Portfolio';
 
+interface FeaturedPlayer {
+  name: string;
+  club: string;
+  league: string;
+  price: string;
+  change: string;
+  changePercent: string;
+  isUp: boolean;
+  position: string;
+  stats: {
+    goals: number;
+    assists: number;
+    matches: number;
+  };
+}
+
 const Index = () => {
-  const featuredPlayers = [
-    {
-      name: 'Kylian Mbappe',
-      club: 'Paris Saint-Germain',
-      league: 'Ligue 1',
-      price: '€1,467',
-      change: '+€312',
-      changePercent: '+24.8%',
-      isUp: true,
-      position: 'FW',
-      stats: { goals: 28, assists: 12, matches: 31 }
-    },
-    {
-      name: 'Jude Bellingham',
-      club: 'Real Madrid',
-      league: 'La Liga',
-      price: '€1,234',
-      change: '+€189',
-      changePercent: '+18.2%',
-      isUp: true,
-      position: 'MF',
-      stats: { goals: 15, assists: 8, matches: 29 }
-    },
-    {
-      name: 'Vinicius Jr',
-      club: 'Real Madrid',
-      league: 'La Liga',
-      price: '€1,189',
-      change: '+€167',
-      changePercent: '+15.7%',
-      isUp: true,
-      position: 'FW',
-      stats: { goals: 19, assists: 11, matches: 28 }
-    },
-    {
-      name: 'Phil Foden',
-      club: 'Manchester City',
-      league: 'Premier League',
-      price: '€987',
-      change: '+€108',
-      changePercent: '+12.3%',
-      isUp: true,
-      position: 'MF',
-      stats: { goals: 22, assists: 9, matches: 32 }
-    },
-    {
-      name: 'Victor Osimhen',
-      club: 'SSC Napoli',
-      league: 'Serie A',
-      price: '€856',
-      change: '-€78',
-      changePercent: '-8.4%',
-      isUp: false,
-      position: 'FW',
-      stats: { goals: 16, assists: 4, matches: 25 }
-    },
-    {
-      name: 'Bukayo Saka',
-      club: 'Arsenal',
-      league: 'Premier League',
-      price: '€743',
-      change: '+€34',
-      changePercent: '+4.8%',
-      isUp: true,
-      position: 'MF',
-      stats: { goals: 12, assists: 15, matches: 30 }
-    }
-  ];
+  const [featuredPlayers, setFeaturedPlayers] = useState<FeaturedPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFeaturedPlayers = async () => {
+      setLoading(true);
+      // Fetch top 6 players by price
+      const { data: players, error: playersError } = await supabase
+        .from('players')
+        .select('*')
+        .order('current_price', { ascending: false })
+        .limit(6);
+      if (playersError || !players) {
+        setFeaturedPlayers([]);
+        setLoading(false);
+        return;
+      }
+      // Fetch and aggregate stats for each player
+      const playerIds = players.map((p) => p.id);
+      const { data: stats, error: statsError } = await supabase
+        .from('match_stats')
+        .select('player_id, goals, assists')
+        .in('player_id', playerIds);
+      // Aggregate stats per player
+      const statsMap: Record<string, { goals: number; assists: number; matches: number }> = {};
+      playerIds.forEach((id) => {
+        statsMap[id] = { goals: 0, assists: 0, matches: 0 };
+      });
+      if (stats && !statsError) {
+        stats.forEach((row) => {
+          if (row.player_id in statsMap) {
+            statsMap[row.player_id].goals += row.goals || 0;
+            statsMap[row.player_id].assists += row.assists || 0;
+            statsMap[row.player_id].matches += 1;
+          }
+        });
+      }
+      // Map to PlayerCard shape
+      const mapped = players.map((p) => ({
+        name: p.name,
+        club: p.team,
+        league: p.league,
+        price: p.current_price ? `€${(p.current_price / 1000000).toFixed(2)}M` : 'N/A',
+        change: '+€0', // Placeholder, you can calculate this if you have price history
+        changePercent: '+0%', // Placeholder
+        isUp: true, // Placeholder, you can set logic based on price change
+        position: p.position,
+        stats: statsMap[p.id] || { goals: 0, assists: 0, matches: 0 },
+      }));
+      setFeaturedPlayers(mapped);
+      setLoading(false);
+    };
+    fetchFeaturedPlayers();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -109,14 +112,17 @@ const Index = () => {
               View All →
             </button>
           </div>
-          
-          <div className="trading-grid">
-            {featuredPlayers.map((player, index) => (
-              <div key={index} className="animate-fade-up" style={{ animationDelay: `${index * 0.1}s` }}>
-                <PlayerCard {...player} />
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="text-center py-8">Loading featured players...</div>
+          ) : (
+            <div className="trading-grid">
+              {featuredPlayers.map((player, index) => (
+                <div key={index} className="animate-fade-up" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <PlayerCard {...player} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </main>
       

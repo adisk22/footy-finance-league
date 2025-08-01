@@ -1,41 +1,84 @@
-
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { TrendingUp, TrendingDown, Users, DollarSign, Target, Award } from 'lucide-react';
+import type { ElementType } from 'react';
+
+interface Stat {
+  title: string;
+  value: string;
+  change: string;
+  changeValue: string;
+  isUp: boolean;
+  icon: ElementType;
+}
 
 const DashboardStats = () => {
-  const stats = [
-    {
-      title: 'Portfolio Value',
-      value: '€125,847',
-      change: '+12.5%',
-      changeValue: '+€13,924',
-      isUp: true,
-      icon: DollarSign,
-    },
-    {
-      title: 'Total Players',
-      value: '23',
-      change: '+2',
-      changeValue: 'This week',
-      isUp: true,
-      icon: Users,
-    },
-    {
-      title: 'Best Performer',
-      value: 'Mbappe',
-      change: '+24.8%',
-      changeValue: '+€312',
-      isUp: true,
-      icon: Award,
-    },
-    {
-      title: 'Weekly Rank',
-      value: '#127',
-      change: '+45',
-      changeValue: 'Positions',
-      isUp: true,
-      icon: Target,
-    },
-  ];
+  const [stats, setStats] = useState<Stat[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      setLoading(true);
+      // Fetch all players
+      const { data: players, error } = await supabase
+        .from('players')
+        .select('*');
+      if (error || !players) {
+        setStats([]);
+        setLoading(false);
+        return;
+      }
+      // Portfolio Value: sum of all current_price
+      const totalValue = players.reduce((sum, p) => sum + (p.current_price || 0), 0);
+      // Total Players
+      const totalPlayers = players.length;
+      // Best Performer: player with highest current_price
+      const bestPerformer = players.reduce((prev, curr) => (curr.current_price || 0) > (prev.current_price || 0) ? curr : prev, players[0]);
+      // Weekly Rank: placeholder
+      const weeklyRank = '#127';
+      // Build stats array
+      setStats([
+        {
+          title: 'Portfolio Value',
+          value: `€${(totalValue / 1000000).toFixed(2)}M`,
+          change: '+0%', // Placeholder
+          changeValue: '+€0', // Placeholder
+          isUp: true,
+          icon: DollarSign,
+        },
+        {
+          title: 'Total Players',
+          value: totalPlayers.toString(),
+          change: '+0', // Placeholder
+          changeValue: 'This week',
+          isUp: true,
+          icon: Users,
+        },
+        {
+          title: 'Best Performer',
+          value: bestPerformer ? bestPerformer.name : 'N/A',
+          change: '+0%', // Placeholder
+          changeValue: '+€0', // Placeholder
+          isUp: true,
+          icon: Award,
+        },
+        {
+          title: 'Weekly Rank',
+          value: weeklyRank,
+          change: '+0', // Placeholder
+          changeValue: 'Positions',
+          isUp: true,
+          icon: Target,
+        },
+      ]);
+      setLoading(false);
+    };
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"><div className="col-span-4 text-center py-8">Loading stats...</div></div>;
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -60,12 +103,9 @@ const DashboardStats = () => {
               <span className="font-mono">{stat.change}</span>
             </div>
           </div>
-          
           <h3 className="text-sm text-muted-foreground mb-1">{stat.title}</h3>
           <div className="font-mono text-2xl font-bold mb-1">{stat.value}</div>
-          <div className={`text-xs ${stat.isUp ? 'text-green-400' : 'text-red-400'}`}>
-            {stat.changeValue}
-          </div>
+          <div className={`text-xs ${stat.isUp ? 'text-green-400' : 'text-red-400'}`}>{stat.changeValue}</div>
         </div>
       ))}
     </div>
@@ -73,4 +113,3 @@ const DashboardStats = () => {
 };
 
 export default DashboardStats;
-
