@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +27,7 @@ const Players = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('ALL');
   const [selectedLeague, setSelectedLeague] = useState('ALL');
+  const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -70,15 +72,30 @@ const Players = () => {
   };
 
   const handleBuyPlayer = async (player: Player) => {
+    if (!user) return;
+
+    // Check if user has enough balance
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('id', user.id)
+      .single();
+
+    if (userError || !userData || userData.balance < player.current_price) {
+      toast({
+        title: "Insufficient Funds",
+        description: "You don't have enough balance to buy this player",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      // Check if user is authenticated (for now, using a placeholder user_id)
-      const userId = "placeholder-user-id"; // This should come from auth context
-      
       // Insert transaction record
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          user_id: userId,
+          user_id: user.id,
           player_id: player.id,
           quantity: 1,
           price: player.current_price,
@@ -91,13 +108,11 @@ const Players = () => {
       const { data: existingPortfolio, error: portfolioFetchError } = await supabase
         .from('portfolio')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .eq('player_id', player.id)
-        .single();
+        .maybeSingle();
 
-      if (portfolioFetchError && portfolioFetchError.code !== 'PGRST116') {
-        throw portfolioFetchError;
-      }
+      if (portfolioFetchError) throw portfolioFetchError;
 
       if (existingPortfolio) {
         // Update existing portfolio entry
@@ -118,7 +133,7 @@ const Players = () => {
         const { error: insertError } = await supabase
           .from('portfolio')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             player_id: player.id,
             quantity: 1,
             average_buy_price: player.current_price
@@ -126,6 +141,14 @@ const Players = () => {
 
         if (insertError) throw insertError;
       }
+
+      // Update user balance
+      const { error: balanceError } = await supabase
+        .from('users')
+        .update({ balance: userData.balance - player.current_price })
+        .eq('id', user.id);
+
+      if (balanceError) throw balanceError;
 
       toast({
         title: "Purchase Successful",
@@ -142,16 +165,16 @@ const Players = () => {
   };
 
   const handleSellPlayer = async (player: Player) => {
+    if (!user) return;
+    
     try {
-      const userId = "placeholder-user-id"; // This should come from auth context
-      
       // Check if user owns this player
       const { data: portfolio, error: portfolioError } = await supabase
         .from('portfolio')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .eq('player_id', player.id)
-        .single();
+        .maybeSingle();
 
       if (portfolioError || !portfolio || Number(portfolio.quantity) <= 0) {
         toast({
@@ -166,7 +189,7 @@ const Players = () => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          user_id: userId,
+          user_id: user.id,
           player_id: player.id,
           quantity: 1,
           price: player.current_price,
@@ -193,6 +216,22 @@ const Players = () => {
           .eq('id', portfolio.id);
 
         if (deleteError) throw deleteError;
+      }
+
+      // Update user balance
+      const { data: userData } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', user.id)
+        .single();
+
+      if (userData) {
+        const { error: balanceError } = await supabase
+          .from('users')
+          .update({ balance: userData.balance + player.current_price })
+          .eq('id', user.id);
+
+        if (balanceError) throw balanceError;
       }
 
       toast({
