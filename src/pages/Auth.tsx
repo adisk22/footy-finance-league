@@ -57,15 +57,23 @@ const Auth = () => {
       const { error } = await signUp(email, password, username);
       
       if (error) {
-        toast({
-          title: "Sign Up Failed",
-          description: error.message,
-          variant: "destructive"
-        });
+        // Check if this is the email confirmation message
+        if (error.message && error.message.includes("check your email")) {
+          toast({
+            title: "Account Created!",
+            description: "Please check your email to confirm your account, then sign in.",
+          });
+        } else {
+          toast({
+            title: "Sign Up Failed",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
       } else {
         toast({
           title: "Account Created!",
-          description: "Welcome to FootyStock! Starting with €20M balance.",
+          description: "Welcome to FootyStock! Starting with €1000 balance.",
         });
         navigate('/');
       }

@@ -33,7 +33,7 @@ const TopGainers = () => {
         name: p.name,
         club: p.team,
         change: '+0%', // Placeholder, update if you have price change data
-        value: p.current_price ? `€${(p.current_price / 1000000).toFixed(2)}M` : 'N/A',
+        value: p.current_price ? `€${p.current_price.toFixed(2)}M` : 'N/A',
         isUp: true, // Placeholder
       }));
       setTopGainers(mapped);

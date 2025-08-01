@@ -86,7 +86,7 @@ const Portfolio = () => {
         })
       );
       setDistribution(dist);
-      setTotalValue(`€${(valueSum / 1000000).toFixed(2)}M`);
+      setTotalValue(`€${valueSum.toFixed(2)}M`);
       setBestInvestment(best.name);
       setWorstInvestment(worst.name);
       setLoading(false);

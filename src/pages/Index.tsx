@@ -67,7 +67,7 @@ const Index = () => {
         name: p.name,
         club: p.team,
         league: p.league,
-        price: p.current_price ? `€${(p.current_price / 1000000).toFixed(2)}M` : 'N/A',
+        price: p.current_price ? `€${p.current_price.toFixed(2)}M` : 'N/A',
         change: '+€0', // Placeholder, you can calculate this if you have price history
         changePercent: '+0%', // Placeholder
         isUp: true, // Placeholder, you can set logic based on price change

@@ -30,7 +30,7 @@ const StockTicker = () => {
       // Map to TickerPlayer shape (no real change data, so use placeholders)
       const mapped = players.map((p) => ({
         name: p.name,
-        price: p.current_price ? `€${(p.current_price / 1000000).toFixed(2)}M` : 'N/A',
+        price: p.current_price ? `€${p.current_price.toFixed(2)}M` : 'N/A',
         change: '+0%', // Placeholder, update if you have price change data
         up: true, // Placeholder
       }));

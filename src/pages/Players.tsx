@@ -42,6 +42,7 @@ const Players = () => {
         .order('current_price', { ascending: false });
 
       if (error) throw error;
+      
       setPlayers(data || []);
     } catch (error) {
       console.error('Error fetching players:', error);
@@ -67,8 +68,12 @@ const Players = () => {
   const uniquePositions = [...new Set(players.map(p => p.position))];
   const uniqueLeagues = [...new Set(players.map(p => p.league))];
 
-  const formatPrice = (price: number) => {
-    return `€${(price / 1000000).toFixed(2)}M`;
+  const formatPrice = (price: number | null) => {
+    if (price === null || price === undefined || price === 0) {
+      return '€0.00M';
+    }
+    // Prices are already in millions (e.g., 150 = €150M)
+    return `€${price.toFixed(2)}M`;
   };
 
   const handleBuyPlayer = async (player: Player) => {

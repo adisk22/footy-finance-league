@@ -40,7 +40,7 @@ const DashboardStats = () => {
       setStats([
         {
           title: 'Portfolio Value',
-          value: `€${(totalValue / 1000000).toFixed(2)}M`,
+          value: `€${totalValue.toFixed(2)}M`,
           change: '+0%', // Placeholder
           changeValue: '+€0', // Placeholder
           isUp: true,

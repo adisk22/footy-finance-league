@@ -104,7 +104,7 @@ const Portfolio = () => {
   };
 
   const formatPrice = (price: number) => {
-    return `€${(price / 1000000).toFixed(2)}M`;
+    return `€${price.toFixed(2)}M`;
   };
 
   const calculateProfitLoss = (currentPrice: number, averagePrice: number, quantity: number) => {

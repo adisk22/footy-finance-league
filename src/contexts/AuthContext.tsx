@@ -59,17 +59,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const createUserProfile = async (user: User) => {
     try {
+      console.log('Creating user profile for:', user.id);
       const { error } = await supabase
         .from('users')
         .insert({
           id: user.id,
           email: user.email!,
           username: user.user_metadata?.username || user.email?.split('@')[0],
-          balance: 20000000 // Starting balance: €20M
+          balance: 1000 // Starting balance: €1000
         });
       
       if (error && error.code !== '23505') { // Ignore duplicate key error
         console.error('Error creating user profile:', error);
+      } else {
+        console.log('User profile created successfully with balance: 1000');
       }
     } catch (error) {
       console.error('Error creating user profile:', error);
@@ -77,20 +80,41 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const signUp = async (email: string, password: string, username: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
+    // Sign up without email confirmation by using a different approach
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
         data: {
           username
         }
       }
     });
     
-    return { error };
+    if (signUpError) {
+      return { error: signUpError };
+    }
+    
+    // If the user was created successfully, try to sign them in immediately
+    if (data.user) {
+      // For users who don't need email confirmation, we can sign them in right away
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (signInError) {
+        // If sign in fails, it might be because email confirmation is still required
+        // In that case, we'll return a specific error message
+        return { 
+          error: { 
+            message: "Account created! Please check your email to confirm your account before signing in." 
+          } 
+        };
+      }
+    }
+    
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {

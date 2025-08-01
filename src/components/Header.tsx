@@ -24,6 +24,7 @@ const Header = () => {
     if (!user) return;
     
     try {
+      console.log('Fetching balance for user:', user.id);
       const { data, error } = await supabase
         .from('users')
         .select('balance')
@@ -31,6 +32,7 @@ const Header = () => {
         .single();
 
       if (error) throw error;
+      console.log('Balance data:', data);
       setBalance(data?.balance || 0);
     } catch (error) {
       console.error('Error fetching balance:', error);
@@ -43,7 +45,13 @@ const Header = () => {
   };
 
   const formatBalance = (amount: number) => {
-    return `€${(amount / 1000000).toFixed(1)}M`;
+    if (amount >= 1000000) {
+      return `€${(amount / 1000000).toFixed(1)}M`;
+    } else if (amount >= 1000) {
+      return `€${(amount / 1000).toFixed(1)}K`;
+    } else {
+      return `€${amount.toFixed(0)}`;
+    }
   };
 
   return (
