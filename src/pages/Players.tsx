@@ -70,11 +70,143 @@ const Players = () => {
   };
 
   const handleBuyPlayer = async (player: Player) => {
-    // This would integrate with your portfolio/transaction system
-    toast({
-      title: "Buy Order Placed",
-      description: `Placed buy order for ${player.name}`,
-    });
+    try {
+      // Check if user is authenticated (for now, using a placeholder user_id)
+      const userId = "placeholder-user-id"; // This should come from auth context
+      
+      // Insert transaction record
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          player_id: player.id,
+          quantity: 1,
+          price: player.current_price,
+          type: 'buy'
+        });
+
+      if (transactionError) throw transactionError;
+
+      // Update or create portfolio entry
+      const { data: existingPortfolio, error: portfolioFetchError } = await supabase
+        .from('portfolio')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('player_id', player.id)
+        .single();
+
+      if (portfolioFetchError && portfolioFetchError.code !== 'PGRST116') {
+        throw portfolioFetchError;
+      }
+
+      if (existingPortfolio) {
+        // Update existing portfolio entry
+        const newQuantity = Number(existingPortfolio.quantity) + 1;
+        const newAverage = ((Number(existingPortfolio.average_buy_price) * Number(existingPortfolio.quantity)) + player.current_price) / newQuantity;
+        
+        const { error: updateError } = await supabase
+          .from('portfolio')
+          .update({
+            quantity: newQuantity,
+            average_buy_price: newAverage
+          })
+          .eq('id', existingPortfolio.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new portfolio entry
+        const { error: insertError } = await supabase
+          .from('portfolio')
+          .insert({
+            user_id: userId,
+            player_id: player.id,
+            quantity: 1,
+            average_buy_price: player.current_price
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      toast({
+        title: "Purchase Successful",
+        description: `Bought 1 share of ${player.name} for ${formatPrice(player.current_price)}`,
+      });
+    } catch (error) {
+      console.error('Error buying player:', error);
+      toast({
+        title: "Purchase Failed",
+        description: "Failed to complete the purchase",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSellPlayer = async (player: Player) => {
+    try {
+      const userId = "placeholder-user-id"; // This should come from auth context
+      
+      // Check if user owns this player
+      const { data: portfolio, error: portfolioError } = await supabase
+        .from('portfolio')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('player_id', player.id)
+        .single();
+
+      if (portfolioError || !portfolio || Number(portfolio.quantity) <= 0) {
+        toast({
+          title: "Sale Failed",
+          description: "You don't own any shares of this player",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Insert sell transaction
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          player_id: player.id,
+          quantity: 1,
+          price: player.current_price,
+          type: 'sell'
+        });
+
+      if (transactionError) throw transactionError;
+
+      // Update portfolio
+      const newQuantity = Number(portfolio.quantity) - 1;
+      
+      if (newQuantity > 0) {
+        const { error: updateError } = await supabase
+          .from('portfolio')
+          .update({ quantity: newQuantity })
+          .eq('id', portfolio.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Remove from portfolio if quantity reaches 0
+        const { error: deleteError } = await supabase
+          .from('portfolio')
+          .delete()
+          .eq('id', portfolio.id);
+
+        if (deleteError) throw deleteError;
+      }
+
+      toast({
+        title: "Sale Successful",
+        description: `Sold 1 share of ${player.name} for ${formatPrice(player.current_price)}`,
+      });
+    } catch (error) {
+      console.error('Error selling player:', error);
+      toast({
+        title: "Sale Failed",
+        description: "Failed to complete the sale",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -179,8 +311,12 @@ const Players = () => {
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Buy
                     </Button>
-                    <Button variant="outline">
-                      View Stats
+                    <Button 
+                      variant="outline" 
+                      className="border-red-500 text-red-400 hover:bg-red-500/10"
+                      onClick={() => handleSellPlayer(player)}
+                    >
+                      Sell
                     </Button>
                   </div>
                 </div>
