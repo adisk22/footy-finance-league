@@ -1,16 +1,17 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, TrendingUp, TrendingDown, ShoppingCart, Minus, Plus } from 'lucide-react';
+import { Search, TrendingUp, ShoppingCart, Minus, Plus } from 'lucide-react';
 import Header from '@/components/Header';
 import { useToast } from '@/hooks/use-toast';
+import { useUser } from '@/contexts/UserContext';
+import { api } from '@/services/api';
 
 interface Player {
   id: string;
@@ -24,6 +25,7 @@ interface Player {
 }
 
 const Players = () => {
+  const { currentUser, refreshUser } = useUser();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,17 +36,12 @@ const Players = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [sellQuantity, setSellQuantity] = useState(1);
-  const [userBalance, setUserBalance] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     fetchPlayers();
-    if (user) {
-      fetchUserBalance();
-    }
-  }, [user]);
+  }, []);
 
   const fetchPlayers = async () => {
     try {
@@ -65,23 +62,6 @@ const Players = () => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchUserBalance = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('id', user.id)
-        .single();
-
-      if (error) throw error;
-      setUserBalance(data?.balance || 0);
-    } catch (error) {
-      console.error('Error fetching user balance:', error);
     }
   };
 
@@ -122,91 +102,37 @@ const Players = () => {
     return selectedPlayer.current_price * buyQuantity;
   };
 
-  const getRemainingBalance = () => {
-    return userBalance - getTotalCost();
-  };
-
   const canAfford = () => {
-    return getTotalCost() <= userBalance;
+    if (!currentUser) return false;
+    return getTotalCost() <= currentUser.balance;
   };
 
   const handleBuyPlayer = (player: Player) => {
-    if (!user) return;
-    
     setSelectedPlayer(player);
     setBuyQuantity(1);
     setBuyDialogOpen(true);
   };
 
   const handleConfirmBuy = async () => {
-    if (!user || !selectedPlayer) return;
+    if (!selectedPlayer || !currentUser) return;
 
     setIsProcessing(true);
     try {
-      console.log('Starting buy transaction:', {
-        user_id: user.id,
-        player_id: selectedPlayer.id,
-        quantity: buyQuantity,
-        price: selectedPlayer.current_price,
-        type: 'buy'
-      });
+      // Call your real API
+      await api.buyPlayer(
+        currentUser.id,
+        selectedPlayer.id,
+        buyQuantity,
+        selectedPlayer.current_price
+      );
 
-      // Insert transaction record - the database trigger will handle portfolio and balance updates
-      const { data: transactionData, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          player_id: selectedPlayer.id,
-          quantity: buyQuantity,
-          price: selectedPlayer.current_price,
-          type: 'buy'
-        })
-        .select();
-
-      console.log('Transaction result:', { transactionData, transactionError });
-
-      if (transactionError) {
-        console.error('Transaction error details:', transactionError);
-        // Check if it's an insufficient balance error
-        if (transactionError.message?.includes('Insufficient balance')) {
-          toast({
-            title: "Insufficient Funds",
-            description: "You don't have enough balance to buy this player",
-            variant: "destructive"
-          });
-        } else {
-          throw transactionError;
-        }
-        return;
-      }
-
-      console.log('Transaction successful, checking portfolio and balance...');
-
-      // Check if portfolio was updated
-      const { data: portfolioData, error: portfolioError } = await supabase
-        .from('portfolio')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('player_id', selectedPlayer.id);
-
-      console.log('Portfolio check:', { portfolioData, portfolioError });
-
-      // Check if balance was updated
-      const { data: balanceData, error: balanceError } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('id', user.id)
-        .single();
-
-      console.log('Balance check:', { balanceData, balanceError });
+      // Refresh user data to get updated balance
+      await refreshUser();
 
       toast({
         title: "Purchase Successful",
         description: `Bought ${buyQuantity} share${buyQuantity > 1 ? 's' : ''} of ${selectedPlayer.name} for ${formatPrice(selectedPlayer.current_price * buyQuantity)}`,
       });
-
-      // Refresh user balance
-      await fetchUserBalance();
       
       // Close dialog
       setBuyDialogOpen(false);
@@ -215,7 +141,7 @@ const Players = () => {
       console.error('Error buying player:', error);
       toast({
         title: "Purchase Failed",
-        description: "Failed to complete the purchase",
+        description: error instanceof Error ? error.message : "Failed to complete the purchase",
         variant: "destructive"
       });
     } finally {
@@ -224,50 +150,31 @@ const Players = () => {
   };
 
   const handleSellPlayer = (player: Player) => {
-    if (!user) return;
-    
     setSelectedPlayer(player);
     setSellQuantity(1);
     setSellDialogOpen(true);
   };
 
   const handleConfirmSell = async () => {
-    if (!user || !selectedPlayer) return;
+    if (!selectedPlayer || !currentUser) return;
 
     setIsProcessing(true);
     try {
-      // Insert sell transaction - the database trigger will handle portfolio and balance updates
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          player_id: selectedPlayer.id,
-          quantity: sellQuantity,
-          price: selectedPlayer.current_price,
-          type: 'sell'
-        });
+      // Call your real API
+      await api.sellPlayer(
+        currentUser.id,
+        selectedPlayer.id,
+        sellQuantity,
+        selectedPlayer.current_price
+      );
 
-      if (transactionError) {
-        // Check if it's an insufficient shares error
-        if (transactionError.message?.includes('Insufficient shares')) {
-          toast({
-            title: "Sale Failed",
-            description: "You don't own any shares of this player",
-            variant: "destructive"
-          });
-        } else {
-          throw transactionError;
-        }
-        return;
-      }
+      // Refresh user data to get updated balance
+      await refreshUser();
 
       toast({
         title: "Sale Successful",
         description: `Sold ${sellQuantity} share${sellQuantity > 1 ? 's' : ''} of ${selectedPlayer.name} for ${formatPrice(selectedPlayer.current_price * sellQuantity)}`,
       });
-
-      // Refresh user balance
-      await fetchUserBalance();
       
       // Close dialog
       setSellDialogOpen(false);
@@ -276,7 +183,7 @@ const Players = () => {
       console.error('Error selling player:', error);
       toast({
         title: "Sale Failed",
-        description: "Failed to complete the sale",
+        description: error instanceof Error ? error.message : "Failed to complete the sale",
         variant: "destructive"
       });
     } finally {
@@ -303,9 +210,31 @@ const Players = () => {
       
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Player Market</h1>
+          <h1 className="text-3xl font-bold mb-2 text-foreground">Player Market</h1>
           <p className="text-muted-foreground">Browse and trade football players</p>
         </div>
+
+        {/* Real Balance Display */}
+        {currentUser ? (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-blue-800">Your Account</h3>
+                <p className="text-sm text-blue-600">Real-time balance and portfolio</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-blue-600">Available Balance</p>
+                <p className="text-2xl font-bold text-blue-800">{formatPrice(currentUser.balance)}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6 p-4 bg-muted border border-border rounded-lg">
+            <div className="flex items-center justify-center">
+              <span className="text-muted-foreground">Loading user data...</span>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -382,6 +311,7 @@ const Players = () => {
                     <Button 
                       onClick={() => handleBuyPlayer(player)}
                       className="bg-green-600 hover:bg-green-700"
+                      disabled={!canAfford()}
                     >
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Buy
@@ -411,7 +341,7 @@ const Players = () => {
       <Dialog open={buyDialogOpen} onOpenChange={setBuyDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Buy Shares</DialogTitle>
+            <DialogTitle>Buy Shares (Demo)</DialogTitle>
           </DialogHeader>
           
           {selectedPlayer && (
@@ -474,12 +404,12 @@ const Players = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Current Balance:</span>
-                  <span className="font-mono">{formatPrice(userBalance)}</span>
+                  <span className="font-mono">{formatPrice(currentUser?.balance || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Remaining Balance:</span>
-                  <span className={`font-mono ${getRemainingBalance() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatPrice(getRemainingBalance())}
+                  <span className={`font-mono ${getTotalCost() <= (currentUser?.balance || 0) ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatPrice(currentUser?.balance || 0 - getTotalCost())}
                   </span>
                 </div>
               </div>
@@ -488,7 +418,7 @@ const Players = () => {
               {!canAfford() && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-600">
-                    Insufficient funds. You need {formatPrice(getTotalCost() - userBalance)} more to complete this purchase.
+                    Insufficient funds. You need {formatPrice(getTotalCost() - (currentUser?.balance || 0))} more to complete this purchase.
                   </p>
                 </div>
               )}
@@ -518,7 +448,7 @@ const Players = () => {
       <Dialog open={sellDialogOpen} onOpenChange={setSellDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Sell Shares</DialogTitle>
+            <DialogTitle>Sell Shares (Demo)</DialogTitle>
           </DialogHeader>
           
           {selectedPlayer && (
@@ -581,11 +511,11 @@ const Players = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Current Balance:</span>
-                  <span className="font-mono">{formatPrice(userBalance)}</span>
+                  <span className="font-mono">{formatPrice(currentUser?.balance || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">New Balance:</span>
-                  <span className="font-mono text-green-600">{formatPrice(userBalance + (selectedPlayer.current_price * sellQuantity))}</span>
+                  <span className="font-mono text-green-600">{formatPrice(currentUser?.balance || 0 + (selectedPlayer.current_price * sellQuantity))}</span>
                 </div>
               </div>
             </div>
@@ -609,6 +539,10 @@ const Players = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <div className="mt-8">
+        {/* FBRKeyTest was removed, so this will be empty or removed */}
+      </div>
     </div>
   );
 };
