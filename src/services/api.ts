@@ -17,65 +17,114 @@ export const api = {
         throw error;
       }
       
-      console.log('API: Returning users:', data || []);
-      return data || [];
+      console.log('API: Returning users:', data);
+      return data;
     } catch (error) {
-      console.error('API: getUsers error:', error);
+      console.error('API: Error in getUsers:', error);
       throw error;
     }
   },
 
-  async getUserById(id: string) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) throw error;
-    return data;
+  async getUserById(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting user:', error);
+      throw error;
+    }
   },
 
   // Player operations
   async getPlayers() {
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .order('name');
-    
-    if (error) throw error;
-    return data || [];
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting players:', error);
+      throw error;
+    }
+  },
+
+  async getPlayerById(playerId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .eq('id', playerId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting player:', error);
+      throw error;
+    }
   },
 
   // Portfolio operations
   async getPortfolio(userId: string) {
-    const { data, error } = await supabase
-      .from('portfolio')
-      .select(`
-        *,
-        players (*)
-      `)
-      .eq('user_id', userId);
-    
-    if (error) throw error;
-    return data || [];
+    try {
+      const { data, error } = await supabase
+        .from('portfolio')
+        .select(`
+          *,
+          players (
+            id,
+            name,
+            position,
+            team,
+            current_price,
+            previous_price
+          )
+        `)
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting portfolio:', error);
+      throw error;
+    }
   },
 
   // Transaction operations
   async getTransactions(userId: string) {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select(`
-        *,
-        players (*)
-      `)
-      .eq('user_id', userId)
-      .order('timestamp', { ascending: false });
-    
-    if (error) throw error;
-    return data || [];
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          players (
+            id,
+            name,
+            position,
+            team
+          )
+        `)
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting transactions:', error);
+      throw error;
+    }
   },
 
+  // Buy player function - FIXED VERSION
   async buyPlayer(userId: string, playerId: string, quantity: number, price: number) {
     console.log('Buying player:', { userId, playerId, quantity, price });
     
@@ -94,7 +143,30 @@ export const api = {
         throw new Error('Insufficient balance');
       }
 
-      // Start a transaction
+      // Check if user already owns shares of this player
+      const { data: existingPortfolio, error: portfolioCheckError } = await supabase
+        .from('portfolio')
+        .select('quantity, average_buy_price')
+        .eq('user_id', userId)
+        .eq('player_id', playerId)
+        .single();
+
+      let newQuantity, newAveragePrice;
+
+      if (existingPortfolio) {
+        // User already owns shares - add to existing quantity
+        newQuantity = existingPortfolio.quantity + quantity;
+        // Calculate weighted average price
+        const existingValue = existingPortfolio.quantity * existingPortfolio.average_buy_price;
+        const newValue = quantity * price;
+        newAveragePrice = (existingValue + newValue) / newQuantity;
+      } else {
+        // User doesn't own shares - create new entry
+        newQuantity = quantity;
+        newAveragePrice = price;
+      }
+
+      // Create transaction record
       const { data: transaction, error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -112,14 +184,14 @@ export const api = {
 
       if (transactionError) throw transactionError;
 
-      // Update portfolio
+      // Update portfolio using upsert
       const { error: portfolioError } = await supabase
         .from('portfolio')
         .upsert({
           user_id: userId,
           player_id: playerId,
-          quantity,
-          average_buy_price: price
+          quantity: newQuantity,
+          average_buy_price: newAveragePrice
         }, {
           onConflict: 'user_id,player_id'
         });
@@ -147,14 +219,15 @@ export const api = {
     }
   },
 
+  // Sell player function - FIXED VERSION
   async sellPlayer(userId: string, playerId: string, quantity: number, price: number) {
+    console.log('Selling player:', { userId, playerId, quantity, price });
+    
     try {
-      console.log('Selling player:', { userId, playerId, quantity, price });
-      
       // Check if user has enough shares
       const { data: portfolio, error: portfolioError } = await supabase
         .from('portfolio')
-        .select('quantity')
+        .select('quantity, average_buy_price')
         .eq('user_id', userId)
         .eq('player_id', playerId)
         .single();
@@ -202,7 +275,7 @@ export const api = {
         if (updateError) throw updateError;
       }
 
-      // Update user balance - FIXED: Use direct calculation instead of RPC
+      // Update user balance
       const { data: currentUser, error: userError } = await supabase
         .from('users')
         .select('balance')
